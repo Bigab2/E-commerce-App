@@ -22,10 +22,23 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.913108065792-dmm6j3j1sh0dt5j02g80m9c93hqa0pfn</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>نحتاج الوصول إلى الكاميرا لالتقاط الصور</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>نحتاج الوصول إلى الصور لاختيار صورة المنتج أو الملف الشخصي</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -60,24 +73,11 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
-<array>
-<string>UIInterfaceOrientationPortrait</string>
-<string>UIInterfaceOrientationPortraitUpsideDown</string>
-<string>UIInterfaceOrientationLandscapeLeft</string>
-<string>UIInterfaceOrientationLandscapeRight</string>
-</array>
-<key>CFBundleURLTypes</key>
-<array>
-<dict>
-<key>CFBundleURLSchemes</key>
-<array>
-<string>com.googleusercontent.apps.913108065792-kg931lrfqsi82sttmbco2ak9nk68pjpa</string>
-</array>
-</dict>
-</array>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 </dict>
 </plist>
-<key>NSPhotoLibraryUsageDescription</key>
-<string>نحتاج الوصول إلى الصور لاختيار صورة المنتج أو الملف الشخصي</string>
-<key>NSCameraUsageDescription</key>
-<string>نحتاج الوصول إلى الكاميرا لالتقاط الصور</string>
