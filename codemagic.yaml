@@ -12,4 +12,24 @@ workflows:
       - name: Build for simulator
         script: flutter build ios --simulator --debug
     artifacts:
-      - build/ios/iphonesimulator/*.app
+      - build/ios/iphonesimulator/*.appworkflows:
+  ios-simulator:
+    name: iOS Simulator Build
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      flutter: stable
+      xcode: latest
+    scripts:
+      - name: Get packages
+        script: flutter pub get
+      - name: Build for simulator
+        script: flutter build ios --simulator --debug
+      - name: Zip app for Appetize
+        script: |
+          cd build/ios/iphonesimulator
+          zip -r -X -y Runner_appetize.zip Runner.app
+          echo "Duplicate entries (if any):"
+          unzip -Z1 Runner_appetize.zip | sort | uniq -d
+    artifacts:
+      - build/ios/iphonesimulator/Runner_appetize.zip
