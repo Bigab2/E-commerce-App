@@ -147,6 +147,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mrbeldi/core/notifications/app_notification_service.dart';
 import 'package:mrbeldi/core/services/local_cart_service.dart';
 import 'package:mrbeldi/core/theme/app_colors.dart';
 
@@ -216,6 +217,12 @@ class _CartScreenState extends State<CartScreen> {
       .doc(_uid)
       .collection('items');
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(AppNotificationService.recordCartInteraction());
+  }
+
   // ── Mettre à jour la quantité (article produit standard) ──
   Future<void> _updateQty(String productId, int newQty) async {
     if (_uid == null) return;
@@ -225,6 +232,7 @@ class _CartScreenState extends State<CartScreen> {
     } else {
       await _itemsRef.doc(productId).update({'qty': newQty});
     }
+    unawaited(AppNotificationService.recordCartInteraction());
   }
 
   // ── Mettre à jour la quantité d'une FORMULE (champ 'quantity', pas 'qty') ──
@@ -236,6 +244,7 @@ class _CartScreenState extends State<CartScreen> {
     } else {
       await _itemsRef.doc(cartItemId).update({'quantity': newQty});
     }
+    unawaited(AppNotificationService.recordCartInteraction());
   }
 
   Future<void> _removeItem(String productId) async {
@@ -243,6 +252,7 @@ class _CartScreenState extends State<CartScreen> {
     HapticFeedback.lightImpact();
     await _itemsRef.doc(productId).delete();
     if (mounted) setState(() => _selectedIds.remove(productId));
+    unawaited(AppNotificationService.recordCartInteraction());
   }
 
   void _confirmRemove(String productId, String name) {
@@ -296,8 +306,11 @@ class _CartScreenState extends State<CartScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0,
         surfaceTintColor: Colors.white,
+        systemOverlayStyle: SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: Colors.transparent,
+        ),
+        elevation: 0,
         centerTitle: false,
         title: const Text('Mon panier',
             style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800,
@@ -3649,8 +3662,11 @@ class _GuestCartScreenState extends State<_GuestCartScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0,
         surfaceTintColor: Colors.white,
+        systemOverlayStyle: SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: Colors.transparent,
+        ),
+        elevation: 0,
         centerTitle: false,
         title: const Text('Mon panier',
             style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800,

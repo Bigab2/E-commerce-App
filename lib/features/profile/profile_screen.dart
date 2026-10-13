@@ -357,127 +357,135 @@ class _GuestPage extends StatelessWidget {
     final h = MediaQuery.of(context).size.height;
     final w = MediaQuery.of(context).size.width;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: w * 0.07),
-          child: Column(
-            children: [
-              SizedBox(height: h * 0.08),
-              Container(
-                width: w * 0.3,
-                height: w * 0.3,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary.withOpacity(0.1),
-                ),
-                child: Center(
-                  child: Text('🌿', style: TextStyle(fontSize: w * 0.12)),
-                ),
-              ),
-              SizedBox(height: h * 0.03),
-              Text(
-                'Rejoignez MrBeldi !',
-                style: TextStyle(
-                  fontSize: w * 0.06,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: h * 0.012),
-              // ✏️ le 🌱 final est remplacé par l'icône pièce (symbole des
-              // "Points"), insérée en ligne via WidgetSpan.
-              Text.rich(
-                TextSpan(
-                  style: TextStyle(
-                    fontSize: w * 0.035,
-                    color: AppColors.textSecondary,
-                    height: 1.6,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(
+        statusBarColor: Colors.transparent,
+      ),
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: w * 0.07),
+            child: Column(
+              children: [
+                SizedBox(height: h * 0.08),
+                Container(
+                  width: w * 0.3,
+                  height: w * 0.3,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.primary.withOpacity(0.1),
                   ),
-                  children: [
-                    const TextSpan(
-                      text:
-                          'Connectez-vous pour accéder à vos commandes,\n'
-                          'vos favoris et vos Points ',
-                    ),
-                    WidgetSpan(
-                      alignment: PlaceholderAlignment.middle,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 2),
-                        child: _CoinIcon(size: w * 0.045),
-                      ),
-                    ),
-                  ],
+                  child: Center(
+                    child: Text('🌿', style: TextStyle(fontSize: w * 0.12)),
+                  ),
                 ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: h * 0.04),
-              // ✏️ le 3e item ('🌱', ...) utilise désormais l'icône pièce
-              // au lieu de l'emoji, cohérent avec le reste de l'app.
-              ...[
-                ('🛒', 'Suivre vos commandes en temps réel', false),
-                ('❤️', 'Sauvegarder vos produits favoris', false),
-                ('', 'Gagner des Points à chaque achat', true),
-              ].map(
-                (e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
+                SizedBox(height: h * 0.03),
+                Text(
+                  'Rejoignez MrBeldi !',
+                  style: TextStyle(
+                    fontSize: w * 0.06,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: h * 0.012),
+                // ✏️ le 🌱 final est remplacé par l'icône pièce (symbole des
+                // "Points"), insérée en ligne via WidgetSpan.
+                Text.rich(
+                  TextSpan(
+                    style: TextStyle(
+                      fontSize: w * 0.035,
+                      color: AppColors.textSecondary,
+                      height: 1.6,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      children: [
-                        e.$3
-                            ? _CoinIcon(size: w * 0.06)
-                            : Text(e.$1, style: TextStyle(fontSize: w * 0.055)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            e.$2,
-                            style: TextStyle(
-                              fontSize: w * 0.033,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.textPrimary,
+                    children: [
+                      const TextSpan(
+                        text:
+                            'Connectez-vous pour accéder à vos commandes,\n'
+                            'vos favoris et vos Points ',
+                      ),
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.middle,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 2),
+                          child: _CoinIcon(size: w * 0.045),
+                        ),
+                      ),
+                    ],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: h * 0.04),
+                // ✏️ le 3e item ('🌱', ...) utilise désormais l'icône pièce
+                // au lieu de l'emoji, cohérent avec le reste de l'app.
+                ...[
+                  ('🛒', 'Suivre vos commandes en temps réel', false),
+                  ('❤️', 'Sauvegarder vos produits favoris', false),
+                  ('', 'Gagner des Points à chaque achat', true),
+                ].map(
+                  (e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          e.$3
+                              ? _CoinIcon(size: w * 0.06)
+                              : Text(
+                                  e.$1,
+                                  style: TextStyle(fontSize: w * 0.055),
+                                ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              e.$2,
+                              style: TextStyle(
+                                fontSize: w * 0.033,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              SizedBox(height: h * 0.04),
-              SizedBox(
-                width: double.infinity,
-                height: h * 0.065,
-                child: ElevatedButton(
-                  onPressed: () => context.push('/login?from=/profile'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                SizedBox(height: h * 0.04),
+                SizedBox(
+                  width: double.infinity,
+                  height: h * 0.065,
+                  child: ElevatedButton(
+                    onPressed: () => context.push('/login?from=/profile'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    "Se connecter / S'inscrire",
-                    style: TextStyle(
-                      fontSize: w * 0.042,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                    child: Text(
+                      "Se connecter / S'inscrire",
+                      style: TextStyle(
+                        fontSize: w * 0.042,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              SizedBox(height: h * 0.04),
-            ],
+                SizedBox(height: h * 0.04),
+              ],
+            ),
           ),
         ),
       ),
@@ -593,6 +601,9 @@ class _LoggedInPageState extends State<_LoggedInPage> {
                 expandedHeight: h * 0.185,
                 pinned: true,
                 backgroundColor: AppColors.primaryDark,
+                systemOverlayStyle: SystemUiOverlayStyle.light.copyWith(
+                  statusBarColor: Colors.transparent,
+                ),
                 elevation: 0,
                 actions: [
                   IconButton(
@@ -687,7 +698,7 @@ class _LoggedInPageState extends State<_LoggedInPage> {
                     SizedBox(height: h * 0.03),
                     Center(
                       child: Text(
-                        'MrBeldi v1.0.6+7 · Maroc 🇲🇦',
+                        'MrBeldi v1.0.7+9 · Maroc 🇲🇦',
                         style: TextStyle(
                           fontSize: w * 0.028,
                           color: AppColors.textLight,

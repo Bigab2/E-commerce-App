@@ -28,12 +28,14 @@
 //    côté vie privée.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mrbeldi/core/notifications/app_notification_service.dart';
 import 'package:mrbeldi/core/services/local_cart_service.dart';
 import 'package:mrbeldi/core/theme/app_colors.dart';
 
@@ -182,92 +184,102 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
- Future<void> _addToCart(Map<String, dynamic> product) async {
-  final uid = FirebaseAuth.instance.currentUser?.uid;
-  final stock = (product['stock'] as num?)?.toInt();
-  if (stock != null && stock <= 0) {
-    _showSnack('Ce produit est en rupture de stock', isError: true);
-    return;
+  Future<void> _addToCart(Map<String, dynamic> product) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final stock = (product['stock'] as num?)?.toInt();
+    if (stock != null && stock <= 0) {
+      _showSnack('Ce produit est en rupture de stock', isError: true);
+      return;
+    }
+
+    // ── زائر غير مسجل: نحفظ محلياً بدل Firestore ──
+    if (uid == null) {
+      await LocalCartService.addItem(widget.productId, qty: quantity);
+      if (!mounted) return;
+      setState(() => _justAdded = true);
+      _showSnack('${product['name'] ?? ''} × $quantity ajouté au panier');
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) setState(() => _justAdded = false);
+      });
+      return;
+    }
+
+    final colors = _stringList(product['colors']);
+    final types = _stringList(product['types']);
+    final selectedColor = (colors.isNotEmpty && _selectedColorIndex != null)
+        ? colors[_selectedColorIndex!]
+        : null;
+    final selectedType = (types.isNotEmpty && _selectedTypeIndex != null)
+        ? types[_selectedTypeIndex!]
+        : null;
+
+    try {
+      final ref = FirebaseFirestore.instance
+          .collection('carts')
+          .doc(uid)
+          .collection('items')
+          .doc(widget.productId);
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final s = await tx.get(ref);
+        final currentQty = s.exists
+            ? ((s.data() as Map)['qty'] as num?)?.toInt() ?? 0
+            : 0;
+        final newQty = currentQty + quantity;
+        if (stock != null && newQty > stock) {
+          throw Exception('STOCK_LIMIT');
+        }
+        final data = <String, dynamic>{
+          'productId': widget.productId,
+          'qty': newQty,
+          if (selectedColor != null) 'color': selectedColor,
+          if (selectedType != null) 'type': selectedType,
+        };
+        if (s.exists) {
+          tx.update(ref, data);
+        } else {
+          tx.set(ref, {...data, 'addedAt': FieldValue.serverTimestamp()});
+        }
+      });
+
+      unawaited(AppNotificationService.recordCartInteraction());
+
+      if (!mounted) return;
+      setState(() => _justAdded = true);
+      _showSnack('${product['name'] ?? ''} × $quantity ajouté au panier');
+
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) setState(() => _justAdded = false);
+      });
+    } catch (e) {
+      _showSnack(
+        e.toString().contains('STOCK_LIMIT')
+            ? 'Stock maximum atteint pour ce produit'
+            : 'Erreur, réessayez',
+        isError: true,
+      );
+    }
   }
-
-  // ── زائر غير مسجل: نحفظ محلياً بدل Firestore ──
-  if (uid == null) {
-    await LocalCartService.addItem(widget.productId, qty: quantity);
-    if (!mounted) return;
-    setState(() => _justAdded = true);
-    _showSnack('${product['name'] ?? ''} × $quantity ajouté au panier');
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) setState(() => _justAdded = false);
-    });
-    return;
-  }
-
-  final colors = _stringList(product['colors']);
-  final types = _stringList(product['types']);
-  final selectedColor = (colors.isNotEmpty && _selectedColorIndex != null)
-      ? colors[_selectedColorIndex!]
-      : null;
-  final selectedType = (types.isNotEmpty && _selectedTypeIndex != null)
-      ? types[_selectedTypeIndex!]
-      : null;
-
-  try {
-    final ref = FirebaseFirestore.instance
-        .collection('carts')
-        .doc(uid)
-        .collection('items')
-        .doc(widget.productId);
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      final s = await tx.get(ref);
-      final currentQty = s.exists ? ((s.data() as Map)['qty'] as num?)?.toInt() ?? 0 : 0;
-      final newQty = currentQty + quantity;
-      if (stock != null && newQty > stock) {
-        throw Exception('STOCK_LIMIT');
-      }
-      final data = <String, dynamic>{
-        'productId': widget.productId,
-        'qty': newQty,
-        if (selectedColor != null) 'color': selectedColor,
-        if (selectedType != null) 'type': selectedType,
-      };
-      if (s.exists) {
-        tx.update(ref, data);
-      } else {
-        tx.set(ref, {...data, 'addedAt': FieldValue.serverTimestamp()});
-      }
-    });
-
-    if (!mounted) return;
-    setState(() => _justAdded = true);
-    _showSnack('${product['name'] ?? ''} × $quantity ajouté au panier');
-
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) setState(() => _justAdded = false);
-    });
-  } catch (e) {
-    _showSnack(
-      e.toString().contains('STOCK_LIMIT')
-          ? 'Stock maximum atteint pour ce produit'
-          : 'Erreur, réessayez',
-      isError: true,
-    );
-  }
-}
 
   void _showSnack(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontFamily: 'Cairo')),
-      backgroundColor: isError ? const Color(0xFFE53935) : AppColors.primary,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontFamily: 'Cairo')),
+        backgroundColor: isError ? const Color(0xFFE53935) : AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   void _scrollToReviews() {
     final ctx = _reviewsKey.currentContext;
     if (ctx != null) {
-      Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOut,
+      );
     }
   }
 
@@ -291,7 +303,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           top: true,
           bottom: false,
           child: StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('products').doc(widget.productId).snapshots(),
+            stream: FirebaseFirestore.instance
+                .collection('products')
+                .doc(widget.productId)
+                .snapshots(),
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -304,15 +319,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               final price = _p(product['price']);
               final oldPrice = _p(product['oldPrice']);
               final hasDiscount = oldPrice > price && oldPrice > 0;
-              final discountPercent = hasDiscount ? (((oldPrice - price) / oldPrice) * 100).round() : 0;
+              final discountPercent = hasDiscount
+                  ? (((oldPrice - price) / oldPrice) * 100).round()
+                  : 0;
               final stock = (product['stock'] as num?)?.toInt();
               final outOfStock = stock != null && stock <= 0;
               final rating = _p(product['rating']).clamp(0.0, 5.0);
               // FIX : sous les étoiles on doit afficher le nombre de NOTES
               // (ratingCount), pas le nombre d'avis écrits (reviewCount) —
               // ce sont deux compteurs distincts.
-              final reviewCount = (product['reviewCount'] as num?)?.toInt() ?? 0;
-              final ratingCount = (product['ratingCount'] as num?)?.toInt() ?? 0;
+              final reviewCount =
+                  (product['reviewCount'] as num?)?.toInt() ?? 0;
+              final ratingCount =
+                  (product['ratingCount'] as num?)?.toInt() ?? 0;
               // FIX : le champ réel du nombre de ventes est "salesCount"
               // (cohérent avec les Firestore rules), pas "soldCount" qui
               // n'existe dans aucun document produit.
@@ -332,6 +351,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     pinned: true,
                     backgroundColor: Colors.white,
                     surfaceTintColor: Colors.white,
+                    systemOverlayStyle: SystemUiOverlayStyle.dark.copyWith(
+                      statusBarColor: Colors.transparent,
+                    ),
                     leading: _CircleIconBtn(
                       icon: Icons.arrow_back_ios_new_rounded,
                       onTap: () => context.pop(),
@@ -341,16 +363,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         stream: FirebaseAuth.instance.currentUser == null
                             ? const Stream.empty()
                             : FirebaseFirestore.instance
-                                .collection('favourites')
-                                .doc(FirebaseAuth.instance.currentUser!.uid)
-                                .collection('items')
-                                .doc(widget.productId)
-                                .snapshots(),
+                                  .collection('favourites')
+                                  .doc(FirebaseAuth.instance.currentUser!.uid)
+                                  .collection('items')
+                                  .doc(widget.productId)
+                                  .snapshots(),
                         builder: (_, favSnap) {
                           final isFav = favSnap.data?.exists ?? false;
                           return _CircleIconBtn(
-                            icon: isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                            iconColor: isFav ? const Color(0xFFE53935) : Colors.black,
+                            icon: isFav
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            iconColor: isFav
+                                ? const Color(0xFFE53935)
+                                : Colors.black,
                             onTap: () => _toggleFavorite(isFav),
                           );
                         },
@@ -364,7 +390,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           images: images,
                           controller: _pageController,
                           currentIndex: _currentImage,
-                          onPageChanged: (i) => setState(() => _currentImage = i),
+                          onPageChanged: (i) =>
+                              setState(() => _currentImage = i),
                         ),
                       ),
                     ),
@@ -391,18 +418,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               Text(
                                 description,
                                 maxLines: _showFullDescription ? null : 2,
-                                overflow: _showFullDescription ? TextOverflow.visible : TextOverflow.ellipsis,
-                                style: TextStyle(fontFamily: 'Cairo', fontSize: 14, height: 1.5, color: Colors.grey[700]),
+                                overflow: _showFullDescription
+                                    ? TextOverflow.visible
+                                    : TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 14,
+                                  height: 1.5,
+                                  color: Colors.grey[700],
+                                ),
                               ),
                               const SizedBox(height: 2),
                               GestureDetector(
-                                onTap: () => setState(() => _showFullDescription = !_showFullDescription),
+                                onTap: () => setState(
+                                  () => _showFullDescription =
+                                      !_showFullDescription,
+                                ),
                                 behavior: HitTestBehavior.opaque,
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      _showFullDescription ? 'Réduire' : 'Lire plus',
+                                      _showFullDescription
+                                          ? 'Réduire'
+                                          : 'Lire plus',
                                       style: TextStyle(
                                         fontFamily: 'Cairo',
                                         fontSize: 12,
@@ -412,8 +451,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                     ),
                                     AnimatedRotation(
                                       turns: _showFullDescription ? 0.5 : 0,
-                                      duration: const Duration(milliseconds: 200),
-                                      child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppColors.primary),
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
+                                      child: Icon(
+                                        Icons.keyboard_arrow_down_rounded,
+                                        size: 18,
+                                        color: AppColors.primary,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -451,9 +496,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
                                     decoration: BoxDecoration(
-                                      border: Border.all(color: _kPriceOrange, width: 1.4),
+                                      border: Border.all(
+                                        color: _kPriceOrange,
+                                        width: 1.4,
+                                      ),
                                       borderRadius: BorderRadius.circular(5),
                                     ),
                                     child: Text(
@@ -479,7 +530,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            const Icon(Icons.star_rounded, size: 15, color: Color(0xFFFFC107)),
+                                            const Icon(
+                                              Icons.star_rounded,
+                                              size: 15,
+                                              color: Color(0xFFFFC107),
+                                            ),
                                             const SizedBox(width: 2),
                                             Text(
                                               rating.toStringAsFixed(1),
@@ -493,14 +548,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                             if (ratingCount > 0)
                                               Text(
                                                 ' ($ratingCount)',
-                                                style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5, color: Colors.grey[600]),
+                                                style: TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 11.5,
+                                                  color: Colors.grey[600],
+                                                ),
                                               ),
                                           ],
                                         ),
                                       ),
                                     if (salesCount > 0) ...[
                                       if (rating > 0) const SizedBox(height: 4),
-                                      _SalesBadge(label: '${_formatSold(salesCount)} vendus'),
+                                      _SalesBadge(
+                                        label:
+                                            '${_formatSold(salesCount)} vendus',
+                                      ),
                                     ],
                                   ],
                                 ),
@@ -511,9 +573,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               const SizedBox(height: 12),
                               Container(
                                 width: double.infinity,
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFE53935).withValues(alpha: 0.08),
+                                  color: const Color(
+                                    0xFFE53935,
+                                  ).withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Center(
@@ -547,14 +613,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               Row(
                                 children: [
                                   _qtyBtn(Icons.remove_rounded, () {
-                                    if (quantity > 1) setState(() => quantity--);
+                                    if (quantity > 1)
+                                      setState(() => quantity--);
                                   }),
                                   Container(
                                     width: 48,
                                     alignment: Alignment.center,
                                     child: Text(
                                       '$quantity',
-                                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.w800),
+                                      style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
                                   _qtyBtn(Icons.add_rounded, () {
@@ -571,16 +642,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             if (colors.isNotEmpty) ...[
                               const Text(
                                 'Couleur',
-                                style: TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1A1A1A),
+                                ),
                               ),
                               const SizedBox(height: 10),
                               Row(
                                 children: List.generate(colors.length, (i) {
-                                  final selected = (_selectedColorIndex ?? 0) == i;
+                                  final selected =
+                                      (_selectedColorIndex ?? 0) == i;
                                   return Padding(
                                     padding: const EdgeInsets.only(right: 12),
                                     child: GestureDetector(
-                                      onTap: () => setState(() => _selectedColorIndex = i),
+                                      onTap: () => setState(
+                                        () => _selectedColorIndex = i,
+                                      ),
                                       child: Container(
                                         width: 34,
                                         height: 34,
@@ -588,7 +667,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                           color: _parseColor(colors[i]),
                                           shape: BoxShape.circle,
                                           border: Border.all(
-                                            color: selected ? AppColors.primary : Colors.grey[300]!,
+                                            color: selected
+                                                ? AppColors.primary
+                                                : Colors.grey[300]!,
                                             width: selected ? 3 : 1,
                                           ),
                                         ),
@@ -604,22 +685,38 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             if (types.isNotEmpty) ...[
                               const Text(
                                 'Type',
-                                style: TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1A1A1A),
+                                ),
                               ),
                               const SizedBox(height: 10),
                               Wrap(
                                 spacing: 10,
                                 runSpacing: 10,
                                 children: List.generate(types.length, (i) {
-                                  final selected = (_selectedTypeIndex ?? 0) == i;
+                                  final selected =
+                                      (_selectedTypeIndex ?? 0) == i;
                                   return GestureDetector(
-                                    onTap: () => setState(() => _selectedTypeIndex = i),
+                                    onTap: () =>
+                                        setState(() => _selectedTypeIndex = i),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 8,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: selected ? AppColors.primary : Colors.white,
+                                        color: selected
+                                            ? AppColors.primary
+                                            : Colors.white,
                                         borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(color: selected ? AppColors.primary : const Color(0xFFE0E0E0)),
+                                        border: Border.all(
+                                          color: selected
+                                              ? AppColors.primary
+                                              : const Color(0xFFE0E0E0),
+                                        ),
                                       ),
                                       child: Text(
                                         types[i],
@@ -627,7 +724,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                           fontFamily: 'Cairo',
                                           fontSize: 13,
                                           fontWeight: FontWeight.w700,
-                                          color: selected ? Colors.white : const Color(0xFF424242),
+                                          color: selected
+                                              ? Colors.white
+                                              : const Color(0xFF424242),
                                         ),
                                       ),
                                     ),
@@ -647,7 +746,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     top: false,
                     sliver: SliverToBoxAdapter(
                       key: _reviewsKey,
-                      child: _ReviewsSection(productId: widget.productId, rating: rating, reviewCount: reviewCount),
+                      child: _ReviewsSection(
+                        productId: widget.productId,
+                        rating: rating,
+                        reviewCount: reviewCount,
+                      ),
                     ),
                   ),
 
@@ -656,7 +759,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     SliverSafeArea(
                       top: false,
                       sliver: SliverToBoxAdapter(
-                        child: _SimilarProductsSection(category: category, excludeProductId: widget.productId),
+                        child: _SimilarProductsSection(
+                          category: category,
+                          excludeProductId: widget.productId,
+                        ),
                       ),
                     ),
 
@@ -667,80 +773,111 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
         ),
         bottomNavigationBar: StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('products').doc(widget.productId).snapshots(),
-            builder: (context, snap) {
-              if (!snap.hasData || !snap.data!.exists) return const SizedBox();
-              final product = snap.data!.data() as Map<String, dynamic>;
-              final price = _p(product['price']);
-              final stock = (product['stock'] as num?)?.toInt();
-              final outOfStock = stock != null && stock <= 0;
+          stream: FirebaseFirestore.instance
+              .collection('products')
+              .doc(widget.productId)
+              .snapshots(),
+          builder: (context, snap) {
+            if (!snap.hasData || !snap.data!.exists) return const SizedBox();
+            final product = snap.data!.data() as Map<String, dynamic>;
+            final price = _p(product['price']);
+            final stock = (product['stock'] as num?)?.toInt();
+            final outOfStock = stock != null && stock <= 0;
 
-              return SafeArea(
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, -4)),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('Total', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.grey[600])),
-                            Text(
-                              '${(price * quantity).toStringAsFixed((price * quantity) % 1 == 0 ? 0 : 1)} DH',
-                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(
-                        width: 200,
-                        height: 52,
-                        child: ElevatedButton.icon(
-                          onPressed: outOfStock ? null : () => _addToCart(product),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            disabledBackgroundColor: Colors.grey[300],
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            elevation: 0,
-                          ),
-                          icon: Icon(_justAdded ? Icons.check_rounded : Icons.add_shopping_cart_rounded, size: 19),
-                          label: Text(
-                            outOfStock ? 'Indisponible' : 'Ajouter au panier',
-                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+            return SafeArea(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 16,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Total',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          Text(
+                            '${(price * quantity).toStringAsFixed((price * quantity) % 1 == 0 ? 0 : 1)} DH',
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 200,
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: outOfStock
+                            ? null
+                            : () => _addToCart(product),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          disabledBackgroundColor: Colors.grey[300],
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        icon: Icon(
+                          _justAdded
+                              ? Icons.check_rounded
+                              : Icons.add_shopping_cart_rounded,
+                          size: 19,
+                        ),
+                        label: Text(
+                          outOfStock ? 'Indisponible' : 'Ajouter au panier',
+                          style: const TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 
-
   Widget _qtyBtn(IconData icon, VoidCallback onTap) => InkWell(
-        onTap: onTap,
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(10),
+    child: Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE0E0E0)),
         borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFE0E0E0)),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: const Color(0xFF424242), size: 18),
-        ),
-      );
+      ),
+      child: Icon(icon, color: const Color(0xFF424242), size: 18),
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -762,7 +899,11 @@ class _SalesBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.local_fire_department_rounded, size: 12, color: _kPriceOrange),
+          const Icon(
+            Icons.local_fire_department_rounded,
+            size: 12,
+            color: _kPriceOrange,
+          ),
           const SizedBox(width: 3),
           Text(
             label,
@@ -798,18 +939,33 @@ class _TrustBar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: [AppColors.primary, AppColors.primary.withValues(alpha: 0.78)],
+          colors: [
+            AppColors.primary,
+            AppColors.primary.withValues(alpha: 0.78),
+          ],
         ),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Flexible(child: _TrustChip(icon: Icons.local_shipping_outlined, label: 'Livraison gratuite')),
+          Flexible(
+            child: _TrustChip(
+              icon: Icons.local_shipping_outlined,
+              label: 'Livraison gratuite',
+            ),
+          ),
           _TrustDot(),
-          Flexible(child: _TrustChip(icon: Icons.eco_outlined, label: '100% Bio')),
+          Flexible(
+            child: _TrustChip(icon: Icons.eco_outlined, label: '100% Bio'),
+          ),
           _TrustDot(),
-          Flexible(child: _TrustChip(icon: Icons.verified_outlined, label: 'Qualité garantie')),
+          Flexible(
+            child: _TrustChip(
+              icon: Icons.verified_outlined,
+              label: 'Qualité garantie',
+            ),
+          ),
         ],
       ),
     );
@@ -856,7 +1012,10 @@ class _TrustDot extends StatelessWidget {
       child: Container(
         width: 3,
         height: 3,
-        decoration: const BoxDecoration(color: Colors.white70, shape: BoxShape.circle),
+        decoration: const BoxDecoration(
+          color: Colors.white70,
+          shape: BoxShape.circle,
+        ),
       ),
     );
   }
@@ -886,7 +1045,11 @@ class _ImageGallery extends StatelessWidget {
     if (images.isEmpty) {
       return Container(
         color: Colors.grey[200],
-        child: const Icon(Icons.image_not_supported_rounded, size: 80, color: Colors.grey),
+        child: const Icon(
+          Icons.image_not_supported_rounded,
+          size: 80,
+          color: Colors.grey,
+        ),
       );
     }
 
@@ -913,7 +1076,11 @@ class _ImageGallery extends StatelessWidget {
                 ),
                 errorWidget: (_, __, ___) => Container(
                   color: Colors.grey[200],
-                  child: const Icon(Icons.image_not_supported_rounded, size: 80, color: Colors.grey),
+                  child: const Icon(
+                    Icons.image_not_supported_rounded,
+                    size: 80,
+                    color: Colors.grey,
+                  ),
                 ),
               ),
             ),
@@ -967,7 +1134,9 @@ class _ImageGallery extends StatelessWidget {
                     width: active ? 18 : 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: active ? AppColors.primary : Colors.black.withValues(alpha: 0.18),
+                      color: active
+                          ? AppColors.primary
+                          : Colors.black.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   );
@@ -985,7 +1154,11 @@ class _GalleryArrow extends StatelessWidget {
   final IconData icon;
   final bool visible;
   final VoidCallback onTap;
-  const _GalleryArrow({required this.icon, required this.visible, required this.onTap});
+  const _GalleryArrow({
+    required this.icon,
+    required this.visible,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1014,25 +1187,34 @@ class _CircleIconBtn extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final VoidCallback onTap;
-  const _CircleIconBtn({required this.icon, required this.onTap, this.iconColor = Colors.black});
+  const _CircleIconBtn({
+    required this.icon,
+    required this.onTap,
+    this.iconColor = Colors.black,
+  });
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(6),
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 6)],
+    padding: const EdgeInsets.all(6),
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 6,
             ),
-            child: Icon(icon, size: 17, color: iconColor),
-          ),
+          ],
         ),
-      );
+        child: Icon(icon, size: 17, color: iconColor),
+      ),
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1043,30 +1225,37 @@ class _NotFoundView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black),
-            onPressed: () => context.pop(),
-          ),
-        ),
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('😕', style: TextStyle(fontSize: 56)),
-                const SizedBox(height: 12),
-                const Text(
-                  'Produit introuvable',
-                  style: TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-              ],
+    appBar: AppBar(
+      backgroundColor: Colors.white,
+      systemOverlayStyle: SystemUiOverlayStyle.dark.copyWith(
+        statusBarColor: Colors.transparent,
+      ),
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black),
+        onPressed: () => context.pop(),
+      ),
+    ),
+    body: SafeArea(
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('😕', style: TextStyle(fontSize: 56)),
+            const SizedBox(height: 12),
+            const Text(
+              'Produit introuvable',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1088,7 +1277,11 @@ class _ReviewsSection extends StatelessWidget {
   final String productId;
   final double rating;
   final int reviewCount;
-  const _ReviewsSection({required this.productId, required this.rating, required this.reviewCount});
+  const _ReviewsSection({
+    required this.productId,
+    required this.rating,
+    required this.reviewCount,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1101,16 +1294,32 @@ class _ReviewsSection extends StatelessWidget {
             children: [
               const Text(
                 'Avis clients',
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A)),
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A1A1A),
+                ),
               ),
               const SizedBox(width: 8),
               if (reviewCount > 0)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: const Color(0xFFFFF8E1), borderRadius: BorderRadius.circular(20)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                   child: Text(
                     '★ ${rating.toStringAsFixed(1)}',
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFFFF8F00)),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFFF8F00),
+                    ),
                   ),
                 ),
             ],
@@ -1128,7 +1337,9 @@ class _ReviewsSection extends StatelessWidget {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 );
               }
               if (snap.hasError) {
@@ -1139,7 +1350,11 @@ class _ReviewsSection extends StatelessWidget {
                   child: Center(
                     child: Text(
                       'Impossible de charger les avis',
-                      style: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.grey[500]),
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        color: Colors.grey[500],
+                      ),
                     ),
                   ),
                 );
@@ -1148,7 +1363,14 @@ class _ReviewsSection extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   child: Center(
-                    child: Text('Aucun avis pour le moment', style: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.grey[500])),
+                    child: Text(
+                      'Aucun avis pour le moment',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        color: Colors.grey[500],
+                      ),
+                    ),
                   ),
                 );
               }
@@ -1179,7 +1401,9 @@ class _ReviewsListState extends State<_ReviewsList> {
 
     return Column(
       children: [
-        ...visible.map((doc) => _ReviewTile(review: doc.data() as Map<String, dynamic>)),
+        ...visible.map(
+          (doc) => _ReviewTile(review: doc.data() as Map<String, dynamic>),
+        ),
         if (docs.length > 3)
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 12),
@@ -1187,7 +1411,12 @@ class _ReviewsListState extends State<_ReviewsList> {
               onPressed: () => setState(() => _expanded = !_expanded),
               child: Text(
                 _expanded ? 'Voir moins' : 'Voir plus (${docs.length - 3})',
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
               ),
             ),
           ),
@@ -1239,7 +1468,10 @@ class _ReviewTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: const Color(0xFFF7F8F7), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8F7),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1252,7 +1484,8 @@ class _ReviewTile extends StatelessWidget {
                         width: 32,
                         height: 32,
                         fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => _initialAvatar(displayName),
+                        errorWidget: (_, __, ___) =>
+                            _initialAvatar(displayName),
                       )
                     : _initialAvatar(displayName),
               ),
@@ -1261,9 +1494,23 @@ class _ReviewTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(displayName, style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.w700)),
+                    Text(
+                      displayName,
+                      style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     if (createdAt != null)
-                      Text(_relativeDate(createdAt), style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey[500])),
+                      Text(
+                        _relativeDate(createdAt),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 10,
+                          color: Colors.grey[500],
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1281,7 +1528,15 @@ class _ReviewTile extends StatelessWidget {
           ),
           if (comment.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(comment, style: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.grey[800], height: 1.4)),
+            Text(
+              comment,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 13,
+                color: Colors.grey[800],
+                height: 1.4,
+              ),
+            ),
           ],
           if (photos.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -1298,7 +1553,11 @@ class _ReviewTile extends StatelessWidget {
                     width: 64,
                     height: 64,
                     fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => Container(width: 64, height: 64, color: Colors.grey[300]),
+                    errorWidget: (_, __, ___) => Container(
+                      width: 64,
+                      height: 64,
+                      color: Colors.grey[300],
+                    ),
                   ),
                 ),
               ),
@@ -1310,16 +1569,24 @@ class _ReviewTile extends StatelessWidget {
   }
 
   Widget _initialAvatar(String name) => Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.15), shape: BoxShape.circle),
-        child: Center(
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary),
-          ),
+    width: 32,
+    height: 32,
+    decoration: BoxDecoration(
+      color: AppColors.primary.withValues(alpha: 0.15),
+      shape: BoxShape.circle,
+    ),
+    child: Center(
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          color: AppColors.primary,
         ),
-      );
+      ),
+    ),
+  );
 
   String _relativeDate(DateTime d) {
     final diff = DateTime.now().difference(d);
@@ -1336,7 +1603,10 @@ class _ReviewTile extends StatelessWidget {
 class _SimilarProductsSection extends StatelessWidget {
   final String category;
   final String excludeProductId;
-  const _SimilarProductsSection({required this.category, required this.excludeProductId});
+  const _SimilarProductsSection({
+    required this.category,
+    required this.excludeProductId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1349,7 +1619,12 @@ class _SimilarProductsSection extends StatelessWidget {
             padding: EdgeInsets.only(right: 16),
             child: Text(
               'Produits similaires',
-              style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A)),
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF1A1A1A),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -1364,21 +1639,29 @@ class _SimilarProductsSection extends StatelessWidget {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 30),
-                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 );
               }
               if (!snap.hasData) {
                 return const SizedBox(height: 8);
               }
 
-              final docs = snap.data!.docs.where((d) => d.id != excludeProductId).toList();
+              final docs = snap.data!.docs
+                  .where((d) => d.id != excludeProductId)
+                  .toList();
 
               if (docs.isEmpty) {
                 return Padding(
                   padding: const EdgeInsets.only(right: 16, bottom: 8),
                   child: Text(
                     'Aucun autre produit dans cette catégorie',
-                    style: TextStyle(fontFamily: 'Cairo', fontSize: 13, color: Colors.grey[500]),
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                      color: Colors.grey[500],
+                    ),
                   ),
                 );
               }
@@ -1392,7 +1675,10 @@ class _SimilarProductsSection extends StatelessWidget {
                   separatorBuilder: (_, __) => const SizedBox(width: 12),
                   itemBuilder: (context, i) {
                     final data = docs[i].data() as Map<String, dynamic>;
-                    return _SimilarProductCard(productId: docs[i].id, data: data);
+                    return _SimilarProductCard(
+                      productId: docs[i].id,
+                      data: data,
+                    );
                   },
                 ),
               );
@@ -1442,17 +1728,23 @@ class _SimilarProductCard extends StatelessWidget {
             Stack(
               children: [
                 ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(14),
+                  ),
                   child: CachedNetworkImage(
                     imageUrl: imageUrl,
                     height: 120,
                     width: double.infinity,
                     fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(height: 120, color: const Color(0xFFF0F0F0)),
+                    placeholder: (_, __) =>
+                        Container(height: 120, color: const Color(0xFFF0F0F0)),
                     errorWidget: (_, __, ___) => Container(
                       height: 120,
                       color: Colors.grey[200],
-                      child: const Icon(Icons.image_not_supported_rounded, color: Colors.grey),
+                      child: const Icon(
+                        Icons.image_not_supported_rounded,
+                        color: Colors.grey,
+                      ),
                     ),
                   ),
                 ),
@@ -1461,12 +1753,19 @@ class _SimilarProductCard extends StatelessWidget {
                     child: Container(
                       decoration: const BoxDecoration(
                         color: Colors.black54,
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(14),
+                        ),
                       ),
                       alignment: Alignment.center,
                       child: const Text(
                         'Indisponible',
-                        style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
@@ -1481,14 +1780,23 @@ class _SimilarProductCard extends StatelessWidget {
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       Text(
                         '${price.toStringAsFixed(price % 1 == 0 ? 0 : 1)} DH',
-                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.w900, color: Colors.black),
+                        style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black,
+                        ),
                       ),
                       if (hasDiscount) ...[
                         const SizedBox(width: 6),

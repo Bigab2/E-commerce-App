@@ -181,8 +181,10 @@ class AppRoutes {
       ),
 
       // ── Formules (paniers thématiques : Beldi / Sain / Saisonnier) ─────
-      // ⚠️ Adapte le nom du paramètre nommé (`initialFormule`) au constructeur
-      //    réel de ta classe FormulesScreen si celui-ci diffère.
+      GoRoute(
+        path: '/formules',
+        pageBuilder: (_, __) => _slidePage(const FormulesScreen()),
+      ),
       GoRoute(
         path: Routes.formules,
         pageBuilder: (_, state) {

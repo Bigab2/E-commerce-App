@@ -300,6 +300,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             pinned: true,
             stretch: true,
             backgroundColor: AppColors.primaryDark,
+            systemOverlayStyle: SystemUiOverlayStyle.light.copyWith(
+              statusBarColor: Colors.transparent,
+            ),
             elevation: 0,
             flexibleSpace: FlexibleSpaceBar(
               stretchModes: const [StretchMode.zoomBackground],
@@ -1151,6 +1154,9 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
             collapsedHeight: kToolbarHeight,
             pinned: true,
             backgroundColor: m.color,
+            systemOverlayStyle: SystemUiOverlayStyle.light.copyWith(
+              statusBarColor: Colors.transparent,
+            ),
             elevation: 0,
             leading: Padding(
               padding: const EdgeInsets.all(8),

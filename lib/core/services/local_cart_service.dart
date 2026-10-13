@@ -21,6 +21,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:mrbeldi/core/notifications/app_notification_service.dart';
 
 class LocalCartItem {
   final String productId;
@@ -121,6 +122,7 @@ class LocalCartService {
     await prefs.setString(
         _storageKey, jsonEncode(_cache.map((e) => e.toJson()).toList()));
     _controller.add(List.unmodifiable(_cache));
+    unawaited(AppNotificationService.recordCartInteraction());
   }
 
   static Future<List<LocalCartItem>> getItems() async {

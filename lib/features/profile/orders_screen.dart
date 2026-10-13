@@ -5,9 +5,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mrbeldi/core/reviews/review_dialog.dart';
 import 'package:mrbeldi/core/theme/app_colors.dart';
+import 'package:mrbeldi/routes/app_routes.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PALETTE — identité "nature" alignée sur AppColors (vert organique dominant),
@@ -96,9 +98,14 @@ class _OrdersScreenState extends State<OrdersScreen>
     // Utilisateur non connecté : on évite une query Firestore avec un uid vide
     // (qui ne renverrait jamais rien mais laisserait un loader silencieux).
     if (uid == null || uid.isEmpty) {
-      return Scaffold(
-        backgroundColor: _Palette.bg,
-        body: _NotSignedIn(w: w),
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: Colors.transparent,
+        ),
+        child: Scaffold(
+          backgroundColor: _Palette.bg,
+          body: _NotSignedIn(w: w),
+        ),
       );
     }
 
@@ -111,6 +118,9 @@ class _OrdersScreenState extends State<OrdersScreen>
             expandedHeight: h * 0.16,
             pinned: true,
             backgroundColor: _Palette.headerMid,
+            systemOverlayStyle: SystemUiOverlayStyle.light.copyWith(
+              statusBarColor: Colors.transparent,
+            ),
             elevation: 0,
             leadingWidth: 52,
             leading: Padding(
@@ -504,7 +514,7 @@ class _OrderCardState extends State<_OrderCard> {
                     label: 'Suivre',
                     icon: Icons.location_on_rounded,
                     color: _Palette.shippingFg,
-                    onTap: () => context.push('/tracking'),
+                    onTap: () => context.push(Routes.orderTrackingPath(id)),
                     w: w,
                   )
                 else if (status == _Status.delivered)
