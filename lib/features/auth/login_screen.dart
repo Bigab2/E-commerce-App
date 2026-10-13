@@ -1,5 +1,6 @@
 // lib/features/auth/login_screen.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,12 +11,18 @@ import 'package:mrbeldi/core/services/local_cart_service.dart';
 import 'package:mrbeldi/routes/app_routes.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Google Auth Service  –  google_sign_in 7.x
+// ─────────────────────────────────────────────────────────────────────────────
+//  Google Auth Service  –  google_sign_in 6.x
 // ─────────────────────────────────────────────────────────────────────────────
 class GoogleAuthService {
   static final _auth = FirebaseAuth.instance;
   static final _googleSignIn = GoogleSignIn(
-    serverClientId: '913108065792-e1l84omkct8d8rrighkeud3jruv9krpc.apps.googleusercontent.com',
+    // iOS يحتاج clientId الخاص بتطبيق iOS (من GoogleService-Info.plist)
+    clientId: defaultTargetPlatform == TargetPlatform.iOS
+        ? '913108065792-dmm6j3j1sh0dt5j02g80m9c93hqa0pfn.apps.googleusercontent.com'
+        : null,
+    serverClientId:
+        '913108065792-e1l84omkct8d8rrighkeud3jruv9krpc.apps.googleusercontent.com',
     scopes: ['email', 'profile'],
   );
 
@@ -28,7 +35,7 @@ class GoogleAuthService {
 
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
-        idToken:     googleAuth.idToken,
+        idToken: googleAuth.idToken,
       );
 
       return await _auth.signInWithCredential(credential);
@@ -49,12 +56,10 @@ class GoogleAuthService {
   }
 
   static Future<void> signOut() async {
-    await Future.wait([
-      _auth.signOut(),
-      _googleSignIn.signOut(),
-    ]);
+    await Future.wait([_auth.signOut(), _googleSignIn.signOut()]);
   }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  LOGIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,8 +77,8 @@ class _LoginScreenState extends State<LoginScreen>
 
   // entrance animation
   late final AnimationController _ctrl;
-  late final Animation<double>   _fadeAnim;
-  late final Animation<Offset>   _slideAnim;
+  late final Animation<double> _fadeAnim;
+  late final Animation<Offset> _slideAnim;
 
   @override
   void initState() {
@@ -87,13 +92,13 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     _ctrl = AnimationController(
-      vsync:    this,
+      vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _fadeAnim  = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _fadeAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, 0.08),
-      end:   Offset.zero,
+      end: Offset.zero,
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
 
     _ctrl.forward();
@@ -126,8 +131,9 @@ class _LoginScreenState extends State<LoginScreen>
 
         // Étape 1 : vérifier si ce compte est programmé pour suppression,
         // AVANT de créer/toucher quoi que ce soit dans users/{uid}.
-        final isScheduledForDeletion =
-            await _checkScheduledForDeletion(user.uid);
+        final isScheduledForDeletion = await _checkScheduledForDeletion(
+          user.uid,
+        );
         if (!mounted) return;
 
         if (isScheduledForDeletion) {
@@ -236,7 +242,8 @@ class _LoginScreenState extends State<LoginScreen>
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text(
@@ -295,8 +302,9 @@ class _LoginScreenState extends State<LoginScreen>
 
     for (int attempt = 0; attempt <= retries; attempt++) {
       try {
-        final userRef =
-            FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final userRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid);
         final snapshot = await userRef.get();
 
         if (!snapshot.exists) {
@@ -330,12 +338,10 @@ class _LoginScreenState extends State<LoginScreen>
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:         Text(msg,
-            style: const TextStyle(fontFamily: 'Cairo')),
+        content: Text(msg, style: const TextStyle(fontFamily: 'Cairo')),
         backgroundColor: AppColors.error,
-        behavior:        SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12)),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
       ),
     );
@@ -373,10 +379,10 @@ class _LoginScreenState extends State<LoginScreen>
                       const Text(
                         'Bienvenue sur MrBeldi',
                         style: TextStyle(
-                          fontSize:   26,
+                          fontSize: 26,
                           fontWeight: FontWeight.w900,
-                          color:      AppColors.textPrimary,
-                          height:     1.2,
+                          color: AppColors.textPrimary,
+                          height: 1.2,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -385,8 +391,8 @@ class _LoginScreenState extends State<LoginScreen>
                         'Des produits frais et naturels\ndirectement du terroir marocain 🇲🇦',
                         style: TextStyle(
                           fontSize: 14,
-                          color:    AppColors.textSecondary,
-                          height:   1.5,
+                          color: AppColors.textSecondary,
+                          height: 1.5,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -404,18 +410,22 @@ class _LoginScreenState extends State<LoginScreen>
                       const SizedBox(height: 16),
 
                       // ── Divider ───────────────────────────────────────
-                      Row(children: [
-                        const Expanded(child: Divider()),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('ou',
-                            style: TextStyle(
-                              color:    AppColors.textLight,
-                              fontSize: 13,
-                            )),
-                        ),
-                        const Expanded(child: Divider()),
-                      ]),
+                      Row(
+                        children: [
+                          const Expanded(child: Divider()),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'ou',
+                              style: TextStyle(
+                                color: AppColors.textLight,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const Expanded(child: Divider()),
+                        ],
+                      ),
 
                       const SizedBox(height: 16),
 
@@ -453,7 +463,8 @@ class _LoginScreenState extends State<LoginScreen>
       children: [
         // outer glow
         Container(
-          width: 130, height: 130,
+          width: 130,
+          height: 130,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: AppColors.primary.withOpacity(0.08),
@@ -461,22 +472,20 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         // inner circle
         Container(
-          width: 105, height: 105,
+          width: 105,
+          height: 105,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
               begin: Alignment.topLeft,
-              end:   Alignment.bottomRight,
-              colors: [
-                AppColors.primary,
-                AppColors.primaryDark,
-              ],
+              end: Alignment.bottomRight,
+              colors: [AppColors.primary, AppColors.primaryDark],
             ),
             boxShadow: [
               BoxShadow(
-                color:      AppColors.primary.withOpacity(0.35),
+                color: AppColors.primary.withOpacity(0.35),
                 blurRadius: 20,
-                offset:     const Offset(0, 8),
+                offset: const Offset(0, 8),
               ),
             ],
           ),
@@ -490,23 +499,25 @@ class _LoginScreenState extends State<LoginScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
             decoration: BoxDecoration(
-              color:        AppColors.primaryDark,
+              color: AppColors.primaryDark,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color:      AppColors.primaryDark.withOpacity(0.3),
+                  color: AppColors.primaryDark.withOpacity(0.3),
                   blurRadius: 8,
-                  offset:     const Offset(0, 3),
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
-            child: const Text('MrBeldi',
+            child: const Text(
+              'MrBeldi',
               style: TextStyle(
-                fontSize:   13,
+                fontSize: 13,
                 fontWeight: FontWeight.w900,
-                color:      Colors.white,
+                color: Colors.white,
                 letterSpacing: 1,
-              )),
+              ),
+            ),
           ),
         ),
       ],
@@ -526,23 +537,25 @@ class _LoginScreenState extends State<LoginScreen>
         return Column(
           children: [
             Container(
-              width: 54, height: 54,
+              width: 54,
+              height: 54,
               decoration: BoxDecoration(
-                color:        AppColors.primary.withOpacity(0.09),
+                color: AppColors.primary.withOpacity(0.09),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Center(
-                child: Text(item.$1,
-                    style: const TextStyle(fontSize: 26)),
+                child: Text(item.$1, style: const TextStyle(fontSize: 26)),
               ),
             ),
             const SizedBox(height: 6),
-            Text(item.$2,
+            Text(
+              item.$2,
               style: const TextStyle(
-                fontSize:   11,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color:      AppColors.textSecondary,
-              )),
+                color: AppColors.textSecondary,
+              ),
+            ),
           ],
         );
       }).toList(),
@@ -552,14 +565,14 @@ class _LoginScreenState extends State<LoginScreen>
   // ── Google Sign-In button ─────────────────────────────────────────────────
   Widget _buildGoogleButton() {
     return SizedBox(
-      width:  double.infinity,
+      width: double.infinity,
       height: 56,
       child: ElevatedButton(
         onPressed: _loading ? null : _signInWithGoogle,
         style: ElevatedButton.styleFrom(
-          backgroundColor:         Colors.white,
+          backgroundColor: Colors.white,
           disabledBackgroundColor: Colors.white,
-          elevation:               2,
+          elevation: 2,
           shadowColor: Colors.black.withOpacity(0.12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -568,10 +581,11 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         child: _loading
             ? const SizedBox(
-                width:  22, height: 22,
-                child:  CircularProgressIndicator(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
                   strokeWidth: 2.5,
-                  color:       AppColors.primary,
+                  color: AppColors.primary,
                 ),
               )
             : Row(
@@ -579,27 +593,30 @@ class _LoginScreenState extends State<LoginScreen>
                 children: [
                   // Google "G" logo — pas besoin d'asset
                   Container(
-                    width: 28, height: 28,
+                    width: 28,
+                    height: 28,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(color: AppColors.border),
                     ),
                     child: const Center(
-                      child: Text('G',
+                      child: Text(
+                        'G',
                         style: TextStyle(
-                          fontSize:   16,
+                          fontSize: 16,
                           fontWeight: FontWeight.w900,
-                          color:      Color(0xFF4285F4),
-                        )),
+                          color: Color(0xFF4285F4),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   const Text(
                     'Continuer avec Google',
                     style: TextStyle(
-                      fontSize:   15,
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color:      AppColors.textPrimary,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                 ],
@@ -611,21 +628,22 @@ class _LoginScreenState extends State<LoginScreen>
   // ── Guest button ──────────────────────────────────────────────────────────
   Widget _buildGuestButton() {
     return SizedBox(
-      width:  double.infinity,
+      width: double.infinity,
       height: 52,
       child: OutlinedButton(
         onPressed: _loading ? null : () => context.go('/home'),
         style: OutlinedButton.styleFrom(
           side: const BorderSide(color: AppColors.border),
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
         child: const Text(
           'Continuer en tant qu\'invité',
           style: TextStyle(
-            fontSize:   14,
+            fontSize: 14,
             fontWeight: FontWeight.w500,
-            color:      AppColors.textSecondary,
+            color: AppColors.textSecondary,
           ),
         ),
       ),
@@ -641,17 +659,19 @@ class _LoginScreenState extends State<LoginScreen>
       text: TextSpan(
         style: const TextStyle(
           fontSize: 11,
-          color:    AppColors.textLight,
-          height:   1.5,
+          color: AppColors.textLight,
+          height: 1.5,
         ),
         children: [
           const TextSpan(
-              text: 'En continuant, vous acceptez nos Conditions d\'utilisation '
-                  'et notre '),
+            text:
+                'En continuant, vous acceptez nos Conditions d\'utilisation '
+                'et notre ',
+          ),
           TextSpan(
             text: 'Politique de confidentialité',
             style: const TextStyle(
-              color:      AppColors.primary,
+              color: AppColors.primary,
               fontWeight: FontWeight.w700,
               decoration: TextDecoration.underline,
             ),
@@ -680,10 +700,10 @@ class _LoginScreenState extends State<LoginScreen>
       child: const Text(
         'Supprimer mon compte',
         style: TextStyle(
-          fontSize:      11.5,
-          fontWeight:    FontWeight.w500,
-          color:         AppColors.textLight,
-          decoration:    TextDecoration.underline,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w500,
+          color: AppColors.textLight,
+          decoration: TextDecoration.underline,
           decorationColor: AppColors.textLight,
         ),
       ),
