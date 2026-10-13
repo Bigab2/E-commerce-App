@@ -1,0 +1,20 @@
+workflows:
+  ios-simulator:
+    name: iOS Simulator Build
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Get packages
+        script: flutter pub get
+      - name: Pod install
+        script: |
+          cd ios
+          pod install
+      - name: Build for simulator
+        script: flutter build ios --simulator --debug
+    artifacts:
+      - build/ios/iphonesimulator/*.app
